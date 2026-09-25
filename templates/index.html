@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>E-Invoicing Research Hub</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="logo">
+        <span class="logo-icon">⚡</span>
+        <span class="logo-text">E-Invoice<br><small>Research Hub</small></span>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-tab="research"><span class="nav-icon">🔍</span> Research</button>
+      <button class="nav-item" data-tab="results"><span class="nav-icon">📊</span> Results</button>
+      <button class="nav-item" data-tab="editor"><span class="nav-icon">✏️</span> Manual Edit</button>
+    </nav>
+    <div class="sidebar-stats">
+      <div class="stat-row"><span>Total</span><strong id="st-total">—</strong></div>
+      <div class="stat-row"><span>Done</span><strong id="st-done" class="c-green">—</strong></div>
+      <div class="stat-row"><span>Pending</span><strong id="st-pending" class="c-amber">—</strong></div>
+      <div class="stat-row"><span>Error</span><strong id="st-error" class="c-red">—</strong></div>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- RESEARCH TAB -->
+    <div class="tab-panel active" id="tab-research">
+      <div class="panel-header">
+        <h1>Research Countries</h1>
+        <div class="header-actions">
+          <button class="btn" onclick="selectAll()">Select All</button>
+          <button class="btn" onclick="selectPending()">Select Pending</button>
+          <button class="btn" onclick="selectErrors()">Retry Errors</button>
+          <button class="btn" onclick="clearSel()">Clear Selection</button>
+          <button class="btn" onclick="refreshData()">🔄 Refresh</button>
+          <button class="btn" onclick="refetchSources()" id="refetch-btn">🔗 Refresh Sources</button>
+          <span class="sel-count" id="sel-count">0 selected</span>
+          <button class="btn btn-primary" id="run-btn" onclick="runResearch()" disabled>
+            ▶ Research &amp; Fetch Sources
+          </button>
+        </div>
+      </div>
+      <div class="progress-wrap" id="progress-wrap" style="display:none">
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+        <div class="progress-label" id="progress-label"></div>
+      </div>
+      <div class="region-filters">
+        <button class="rfbtn active" data-region="">All</button>
+        <button class="rfbtn" data-region="EMEA">EMEA</button>
+        <button class="rfbtn" data-region="AMER">AMER</button>
+        <button class="rfbtn" data-region="APAC">APAC</button>
+      </div>
+      <div class="country-grid" id="country-grid"></div>
+    </div>
+
+    <!-- RESULTS TAB -->
+    <div class="tab-panel" id="tab-results">
+      <div class="panel-header">
+        <h1>All Results</h1>
+        <div class="header-actions">
+          <select id="res-region" onchange="renderTable()">
+            <option value="">All Regions</option>
+            <option>EMEA</option><option>AMER</option><option>APAC</option>
+          </select>
+          <select id="res-status" onchange="renderTable()">
+            <option value="">All Status</option>
+            <option value="done">Done</option>
+            <option value="pending">Pending</option>
+            <option value="error">Error</option>
+          </select>
+          <input type="text" id="res-search" placeholder="Search country…" oninput="renderTable()">
+          <a href="/api/export/csv" class="btn btn-primary">⬇ Download CSV</a>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Region</th><th>Country</th>
+              <th>B2G</th><th>B2B</th><th>B2C</th>
+              <th>B2G Date</th><th>B2B Date</th><th>B2C Date</th>
+              <th>Non-Local</th><th>Dig.Svc</th>
+              <th>AP</th><th>AR</th><th>Import</th><th>Export</th>
+              <th>EU Sales</th><th>EU Purch.</th>
+              <th>Zero-rated</th><th>Exempt</th><th>E-Report</th>
+              <th>Tax Authority</th><th>Format</th><th>Source</th><th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="data-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- MANUAL EDIT TAB -->
+    <div class="tab-panel" id="tab-editor">
+      <div class="panel-header">
+        <h1>Manual Edit</h1>
+        <div class="header-actions">
+          <select id="edit-country-sel" onchange="loadEditor()">
+            <option value="">— Select a country —</option>
+          </select>
+        </div>
+      </div>
+      <div class="editor-wrap" id="editor-wrap">
+        <div class="editor-empty">Select a country above to edit its data.</div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- DRAWER -->
+  <div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer()"></div>
+  <aside class="drawer" id="drawer">
+    <div class="drawer-header">
+      <h2 id="drawer-title"></h2>
+      <div style="display:flex;gap:8px">
+        <button class="btn" onclick="recheckCurrent()">🔄 Re-check</button>
+        <button class="btn" onclick="closeDrawer()">✕</button>
+      </div>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+  </aside>
+</div>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
