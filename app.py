@@ -1,11 +1,22 @@
 from flask import Flask, render_template, jsonify, request, Response
-import mysql.connector
-import os, csv, io, json, re, requests
+import os, csv, io, json, re, requests, sqlite3
 from dotenv import load_dotenv
+
+try:
+    import mysql.connector
+except ImportError:
+    mysql = None
 
 load_dotenv()
 
-app = Flask(__name__)
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+
+app = Flask(
+    __name__,
+    template_folder=os.path.join(BASE_DIR, "templates"),
+    static_folder=os.path.join(BASE_DIR, "static"),
+    static_url_path="/static"
+)
 
 DB_CONFIG = {
     "host": os.environ.get("DB_HOST", "127.0.0.1"),
@@ -33,9 +44,104 @@ FIELDS = [
     "tax_authority", "format", "source"
 ]
 
+class SQLiteCursorAdapter:
+    def __init__(self, cur, is_dict=False):
+        self.cur = cur
+        self.is_dict = is_dict
+
+    def execute(self, sql, params=None):
+        sql = sql.replace("`", "")
+        sql = re.sub(r"\bNOW\(\)", "datetime('now')", sql, flags=re.IGNORECASE)
+        sql = sql.replace("%s", "?")
+        if params is None:
+            return self.cur.execute(sql)
+        else:
+            return self.cur.execute(sql, tuple(params) if isinstance(params, (list, tuple)) else (params,))
+
+    def fetchall(self):
+        rows = self.cur.fetchall()
+        if self.is_dict:
+            cols = [d[0] for d in self.cur.description]
+            return [dict(zip(cols, r)) for r in rows]
+        return rows
+
+    def fetchone(self):
+        row = self.cur.fetchone()
+        if row is None:
+            return None
+        if self.is_dict:
+            cols = [d[0] for d in self.cur.description]
+            return dict(zip(cols, row))
+        return row
+
+    def close(self):
+        self.cur.close()
+
+class SQLiteConnectionAdapter:
+    def __init__(self, conn):
+        self.conn = conn
+
+    def cursor(self, dictionary=False):
+        return SQLiteCursorAdapter(self.conn.cursor(), is_dict=dictionary)
+
+    def commit(self):
+        self.conn.commit()
+
+    def rollback(self):
+        self.conn.rollback()
+
+    def close(self):
+        self.conn.close()
+
+def init_sqlite_db(path):
+    conn = sqlite3.connect(path)
+    cur = conn.cursor()
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS countries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        region TEXT NOT NULL,
+        country TEXT NOT NULL UNIQUE,
+        b2g TEXT, b2b TEXT, b2c TEXT,
+        b2g_date TEXT, b2g_staggered TEXT,
+        b2b_date TEXT, b2b_staggered TEXT,
+        b2c_date TEXT, b2c_staggered TEXT,
+        non_local_suppliers TEXT, digital_services_suppliers TEXT,
+        ap TEXT, ar TEXT, import_txn TEXT, export_txn TEXT,
+        intra_eu_sales TEXT, intra_eu_purchases TEXT,
+        zero_rated TEXT, exempt TEXT, e_reporting TEXT,
+        tax_authority TEXT, format TEXT, source TEXT,
+        status TEXT DEFAULT 'pending',
+        last_updated TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
+    cur.execute("SELECT COUNT(*) FROM countries")
+    if cur.fetchone()[0] == 0:
+        schema_path = os.path.join(BASE_DIR, "schema.sql")
+        if os.path.exists(schema_path):
+            with open(schema_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            m = re.search(r"INSERT IGNORE INTO countries\s*\(region,\s*country\)\s*VALUES\s*(.*?);", content, re.DOTALL)
+            if m:
+                tuples = re.findall(r"\('([^']+)',\s*'([^']+)'\)", m.group(1))
+                for reg, ctry in tuples:
+                    cur.execute("INSERT OR IGNORE INTO countries (region, country) VALUES (?, ?)", (reg, ctry))
+        conn.commit()
+    conn.close()
 
 def get_db():
-    return mysql.connector.connect(**DB_CONFIG)
+    if mysql and hasattr(mysql, "connector"):
+        try:
+            return mysql.connector.connect(**DB_CONFIG)
+        except Exception as e:
+            app.logger.info(f"MySQL unavailable ({e}), using SQLite fallback")
+    
+    sqlite_path = "/tmp/einvoicing.db" if (os.environ.get("VERCEL") or not os.access(BASE_DIR, os.W_OK)) else os.path.join(BASE_DIR, "einvoicing.db")
+    if not os.path.exists(sqlite_path):
+        init_sqlite_db(sqlite_path)
+    conn = sqlite3.connect(sqlite_path)
+    return SQLiteConnectionAdapter(conn)
+
 
 
 def resolve_sources(country, tax_authority, data):
@@ -96,7 +202,7 @@ def get_countries():
     cur.close(); conn.close()
     for r in rows:
         for k in ("last_updated", "created_at"):
-            if r.get(k): r[k] = r[k].isoformat()
+            if r.get(k): r[k] = r[k].isoformat() if hasattr(r[k], "isoformat") else str(r[k])
     return jsonify(rows)
 
 
@@ -109,7 +215,7 @@ def get_country(cid):
     cur.close(); conn.close()
     if not row: return jsonify({"error": "Not found"}), 404
     for k in ("last_updated", "created_at"):
-        if row.get(k): row[k] = row[k].isoformat()
+        if row.get(k): row[k] = row[k].isoformat() if hasattr(row[k], "isoformat") else str(row[k])
     return jsonify(row)
 
 
