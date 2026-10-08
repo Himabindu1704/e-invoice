@@ -1,0 +1,9 @@
+{
+  "name": "einvoicing-groq",
+  "version": "1.0.0",
+  "description": "E-Invoicing Groq Flask Application",
+  "scripts": {
+    "dev": "python app.py",
+    "start": "python app.py"
+  }
+}
